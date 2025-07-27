@@ -82,6 +82,7 @@ namespace Versionator.Editor
 
         /// <summary> List of patterns/files/folders ignored by the user </summary>
         private static string[] ignoredPatterns = Array.Empty<string>();
+        private static List<(Regex regex, bool negated)> ignoredRegexPatterns = new();
 
         public static int currentBranchOptionIdx;
         public static int newBranchOptionIdx;
@@ -138,8 +139,13 @@ namespace Versionator.Editor
                     }
                 } else {
                     bool isIgnored = false;
-                    foreach (string pattern in ignoredPatterns){
-                        if (Regex.IsMatch(assetPath, pattern)) {
+                    foreach (var p in ignoredRegexPatterns){
+                        if (p.regex.IsMatch(assetPath)) {
+                            // Path match but is a file that was marked to not be ignored
+                            if (p.negated) {
+                                break;
+                            }
+                            
                             isIgnored = true;
                             break;
                         }
@@ -252,30 +258,37 @@ namespace Versionator.Editor
                 return;
             }
 
-            var leadingSlash = new Regex("/");
             var gitIgnoreFile = await File.ReadAllLinesAsync(RootGitIgnoreFilePath);
             ignoredPatterns = Array.FindAll(gitIgnoreFile, line => !line.StartsWith("#") && line.Trim().Length > 0 && line.Trim() != "\n");
             cachedIgnoredPaths.Clear();
+            ignoredRegexPatterns.Clear();
 
-            for (int i = 0; i < ignoredPatterns.Length; i++)            {
-                if (ignoredPatterns[i].StartsWith("*")){
-                    ignoredPatterns[i] = $".{ignoredPatterns[i]}";
+            for (int i = 0; i < ignoredPatterns.Length; i++) {
+                string pattern = Regex.Escape(ignoredPatterns[i]).Replace(@"\*", "*").Replace(@"\?", "?");
+                bool negated = pattern.StartsWith("!");
+                
+                // Replace **/ with .*/ for recursive folders
+                pattern = pattern.Replace("**/", "(.*/)?");
+                pattern = pattern.Replace("**", ".*");
+                
+                pattern = pattern.Replace("*", "[^/]*");
+                pattern = pattern.Replace(@"\?", ".");
+                
+                if (!pattern.StartsWith("/"))
+                    pattern = ".*" + pattern; // match anywhere
+
+                // Check It's a folder patern
+                if (pattern.EndsWith("/")) {
+                    // Add also directory regex
+                    var dirRegex = new Regex("^" + pattern.TrimEnd('/') + "$", RegexOptions.Compiled);
+                    ignoredRegexPatterns.Add((dirRegex, negated));
+                    
+                    // ↓↓↓↓ For child elements in the directory
+                    pattern += ".*";
                 }
                 
-                // Remove leading slash of the pattern
-                if (ignoredPatterns[i].StartsWith("/")) {
-                    ignoredPatterns[i] = leadingSlash.Replace(ignoredPatterns[i], "", 1);
-                }
-                
-                // Fix for directories
-                if (ignoredPatterns[i].Contains("**")) {
-                    ignoredPatterns[i] = ignoredPatterns[i].Replace("**", ".+");
-                }
-
-                // Check if pattern is for a file
-                if (ignoredPatterns[i].Contains("/*.")) {
-                    ignoredPatterns[i] = ignoredPatterns[i].Replace("/*.", "\\.") + "$";
-                }
+                var regex = new Regex("^" + pattern + "$", RegexOptions.Compiled);
+                ignoredRegexPatterns.Add((regex, negated));
             }
         }
 
