@@ -102,6 +102,11 @@ namespace Versionator.Editor
                 };
             
                 foreach (var line in gitDiff) {
+
+                    if (line.Length == 0) {
+                        continue;
+                    }
+                    
                     if (line[0] == '~') {
                         // Jumpline
                         if (currentLine.texts.Count > 0) {

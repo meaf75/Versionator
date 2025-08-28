@@ -429,6 +429,7 @@ namespace Versionator.Editor
             try {
                 var startInfo = new ProcessStartInfo {
                     FileName = term,
+                    Arguments = argument,
                     UseShellExecute = false,
                     RedirectStandardError = true,
                     RedirectStandardInput = true,
@@ -437,24 +438,20 @@ namespace Versionator.Editor
                     WorkingDirectory = Environment.CurrentDirectory
                 };
 
-                var process = new Process {
-                    StartInfo = startInfo
-                };
-			
-                startInfo.Arguments = argument;
-                process.StartInfo = startInfo;
-            
-                process.Start();
+                using (var process = new Process { StartInfo = startInfo }) {
+                    process.Start();
 
-                var output = process.StandardOutput.ReadToEnd();
+                    string output = process.StandardOutput.ReadToEnd();
+                    string error = process.StandardError.ReadToEnd();
 
-                if (process.ExitCode != 0) {
-                    var outputErr = process.StandardError.ReadToEnd();
-                    Debug.LogError(outputErr);
+                    process.WaitForExit();
+
+                    if (process.ExitCode != 0) {
+                        Debug.LogError(error);
+                    }
+
+                    return (output, process.ExitCode);
                 }
-            
-                process.WaitForExit();
-                return (output, process.ExitCode);
             } catch (Exception e) {
                 Debug.LogError(e);
                 return (null, 1);
